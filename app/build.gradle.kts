@@ -22,8 +22,12 @@ android {
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-    val apiKey: String = (project.findProperty("GEMINI_API_KEY") as? String) ?: System.getenv("GEMINI_API_KEY") ?: ""
-    buildConfigField("String", "GEMINI_API_KEY", "\"$apiKey\"")
+    val apiKey = project.findProperty("GEMINI_API_KEY") as? String ?: System.getenv("GEMINI_API_KEY")
+    if (apiKey.isNullOrEmpty()) {
+        buildConfigField("String", "GEMINI_API_KEY", "\"\"")
+    } else {
+        buildConfigField("String", "GEMINI_API_KEY", "\"$apiKey\"")
+    }
   }
 
   signingConfigs {
