@@ -40,47 +40,30 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
-      # 5. Fix KSP version
-      - name: Fix KSP version
+      # 5. Disable incompatible flags
+      - name: Configure Gradle properties
         run: |
-          echo "KSP before:"
-          grep -n "googleDevtoolsKsp" gradle/libs.versions.toml || true
-
-          sed -i 's/googleDevtoolsKsp = "2.3.5"/googleDevtoolsKsp = "2.2.10-2.0.2"/g' gradle/libs.versions.toml
-
-          echo "KSP after:"
-          grep -n "googleDevtoolsKsp" gradle/libs.versions.toml || true
+          echo "android.disallowKotlinSourceSets=false" >> gradle.properties
 
       # 6. Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      # 7. Check Gradle
-      - name: Check Gradle
-        run: |
-          gradle --version
-          echo "Project files:"
-          ls -la
-
-      # 8. Fix Gradle Property Flag
-      - name: Disable Kotlin SourceSets Flag
-        run: echo "android.disallowKotlinSourceSets=false" >> gradle.properties
-
-      # 9. Clean
+      # 7. Clean project
       - name: Clean
         run: gradle clean
 
-      # 10. Build APK
+      # 8. Build Debug APK
       - name: Build Debug APK
         run: gradle assembleDebug --stacktrace
 
-      # 11. Find APK
+      # 9. Find APK
       - name: Find APK
         run: |
           echo "Generated APK files:"
           find . -type f -name "*.apk" -print
 
-      # 12. Upload APK
+      # 10. Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
