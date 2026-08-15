@@ -16,24 +16,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.Locale
 
 sealed class JarvisVoiceState {
     object Idle : JarvisVoiceState()
     object Listening : JarvisVoiceState()
     object Processing : JarvisVoiceState()
-    data class Speaking(val text: String) : JarvisVoiceState()
+    data class Speaking(val text: String, val tierUsed: String? = null) : JarvisVoiceState()
     data class Error(val message: String) : JarvisVoiceState()
 }
 
 class JarvisVoiceEngine(
     private val context: Context,
-    private val hardwareController: DeviceHardwareController
+    private val hardwareController: DeviceHardwareController,
+    private val aiRepository: JarvisAiRepository
 ) : RecognitionListener, TextToSpeech.OnInitListener {
 
     private val scope = CoroutineScope(Dispatchers.Main)
@@ -50,12 +46,14 @@ class JarvisVoiceEngine(
     private val _lastQuery = MutableStateFlow("")
     val lastQuery: StateFlow<String> = _lastQuery.asStateFlow()
 
-    private val _lastResponse = MutableStateFlow("JARVIS OS Core standing by. Touch Arc Reactor or speak a command.")
+    private val _lastResponse = MutableStateFlow("JARVIS OS Core standing by. Touch Arc Reactor or speak a directive.")
     val lastResponse: StateFlow<String> = _lastResponse.asStateFlow()
+
+    private val _lastTierUsed = MutableStateFlow("Multi-Tier AI Ready")
+    val lastTierUsed: StateFlow<String> = _lastTierUsed.asStateFlow()
 
     private var installedAppsProvider: (() -> List<AppItem>)? = null
     private var telemetryProvider: (() -> SystemTelemetryState)? = null
-    private var apiKeyProvider: (() -> String)? = null
     private var onFlashlightToggled: ((Boolean) -> Unit)? = null
 
     init {
@@ -73,12 +71,10 @@ class JarvisVoiceEngine(
     fun setProviders(
         apps: () -> List<AppItem>,
         telemetry: () -> SystemTelemetryState,
-        apiKey: () -> String,
         onTorch: (Boolean) -> Unit
     ) {
         installedAppsProvider = apps
         telemetryProvider = telemetry
-        apiKeyProvider = apiKey
         onFlashlightToggled = onTorch
     }
 
@@ -118,183 +114,54 @@ class JarvisVoiceEngine(
     private fun processCommand(query: String) {
         _lastQuery.value = query
         _voiceState.value = JarvisVoiceState.Processing
-        val clean = query.trim().lowercase(Locale.ROOT)
 
-        scope.launch {
-            // 1. Check Offline Hardware & System Commands first for instant execution
-            val offlineHandled = handleOfflineCommand(clean)
-            if (offlineHandled != null) {
-                speak(offlineHandled)
-                return@launch
-            }
-
-            // 2. Check Online AI response via Gemini or fallback Sci-Fi response
-            val userApiKey = apiKeyProvider?.invoke() ?: ""
-            if (userApiKey.isNotBlank()) {
-                val aiReply = fetchGeminiResponse(userApiKey, query)
-                speak(aiReply)
-            } else {
-                val fallbackReply = generateSciFiJarvisReply(query)
-                speak(fallbackReply)
-            }
-        }
-    }
-
-    private fun handleOfflineCommand(cmd: String): String? {
         val telemetry = telemetryProvider?.invoke() ?: SystemTelemetryState()
         val apps = installedAppsProvider?.invoke() ?: emptyList()
 
-        // Flashlight / Torch
-        if (cmd.contains("flashlight") || cmd.contains("torch")) {
-            if (cmd.contains("on") || cmd.contains("activate") || cmd.contains("enable")) {
-                hardwareController.toggleFlashlight { state -> onFlashlightToggled?.invoke(state) }
-                return "Illumination array activated, sir."
-            } else if (cmd.contains("off") || cmd.contains("disable") || cmd.contains("deactivate")) {
-                hardwareController.toggleFlashlight { state -> onFlashlightToggled?.invoke(state) }
-                return "Illumination array powered down."
-            } else {
-                hardwareController.toggleFlashlight { state -> onFlashlightToggled?.invoke(state) }
-                return "Toggling auxiliary optical illumination."
+        scope.launch {
+            val result = aiRepository.executeAiDirective(query, telemetry, apps)
+            when (result) {
+                is AiResponseResult.Success -> {
+                    _lastTierUsed.value = result.tierUsed
+                    speak(result.reply, result.tierUsed)
+                }
+                is AiResponseResult.OfflineAction -> {
+                    _lastTierUsed.value = "Hardware Action Matrix"
+                    executeAction(result.actionCommand)
+                    speak(result.reply, "Hardware Action Matrix")
+                }
+                is AiResponseResult.Error -> {
+                    _voiceState.value = JarvisVoiceState.Error(result.message)
+                }
             }
-        }
-
-        // Audio Profiles
-        if (cmd.contains("silent") || cmd.contains("mute")) {
-            hardwareController.cycleAudioMode()
-            return "Audio sensors set to silent stealth protocol."
-        }
-        if (cmd.contains("vibrate") || cmd.contains("haptic")) {
-            hardwareController.cycleAudioMode()
-            return "Haptic feedback mode initialized."
-        }
-        if (cmd.contains("normal mode") || cmd.contains("unmute") || cmd.contains("sound on")) {
-            hardwareController.cycleAudioMode()
-            return "Acoustic audio systems operational."
-        }
-
-        // Diagnostics & Telemetry
-        if (cmd.contains("status") || cmd.contains("diagnostics") || cmd.contains("telemetry") || cmd.contains("report")) {
-            return "System Diagnostic Report: Battery at ${telemetry.batteryPercent}%, temperature ${telemetry.batteryTempCelsius} degrees Celsius. RAM usage is ${telemetry.ramUsagePercent}%. Storage utilization is ${telemetry.storageUsagePercent}%. Network link ${telemetry.carrierName} is online at ${telemetry.networkSpeedFormatted}."
-        }
-        if (cmd.contains("battery") || cmd.contains("power")) {
-            val chargeStatus = if (telemetry.isCharging) "currently receiving external charge" else "discharging on internal cell"
-            return "Power levels are at ${telemetry.batteryPercent}%, $chargeStatus. Core thermal readout: ${telemetry.batteryTempCelsius} degrees."
-        }
-        if (cmd.contains("memory") || cmd.contains("ram")) {
-            return "Memory allocation is at ${telemetry.ramUsagePercent}%. ${telemetry.ramUsedGb} Gigabytes used out of ${telemetry.ramTotalGb} Gigabytes available."
-        }
-        if (cmd.contains("storage") || cmd.contains("disk")) {
-            return "Local storage capacity: ${telemetry.storageUsagePercent}% utilized. ${telemetry.storageUsedGb} GB occupied of ${telemetry.storageTotalGb} GB."
-        }
-
-        // System Settings
-        if (cmd.contains("open wifi") || cmd.contains("wi-fi settings")) {
-            hardwareController.openWifiSettings()
-            return "Accessing Wi-Fi transmission matrix."
-        }
-        if (cmd.contains("open bluetooth") || cmd.contains("bluetooth settings")) {
-            hardwareController.openBluetoothSettings()
-            return "Accessing short-range Bluetooth telemetry."
-        }
-        if (cmd.contains("open settings") || cmd.contains("device settings")) {
-            hardwareController.openSystemSettings()
-            return "Opening system configuration sub-routines."
-        }
-
-        // App Launching ("Open WhatsApp", "Launch Camera", "Start Chrome", etc.)
-        if (cmd.startsWith("open ") || cmd.startsWith("launch ") || cmd.startsWith("start ")) {
-            val targetName = cmd.removePrefix("open ")
-                .removePrefix("launch ")
-                .removePrefix("start ")
-                .trim()
-
-            val matchedApp = apps.firstOrNull {
-                it.appName.lowercase(Locale.ROOT).contains(targetName) ||
-                        targetName.contains(it.appName.lowercase(Locale.ROOT))
-            }
-
-            if (matchedApp != null) {
-                hardwareController.launchApp(matchedApp.packageName)
-                return "Initiating ${matchedApp.appName} application."
-            } else {
-                return "Target module $targetName was not detected in local application partitions."
-            }
-        }
-
-        // Direct Calling ("Call 911", "Call Mom")
-        if (cmd.startsWith("call ") || cmd.startsWith("dial ")) {
-            val target = cmd.removePrefix("call ").removePrefix("dial ").trim()
-            if (target.matches(Regex("^[0-9+\\-#* ]+$"))) {
-                hardwareController.dialPhoneNumber(target)
-                return "Routing voice call link to $target."
-            }
-        }
-
-        return null
-    }
-
-    private suspend fun fetchGeminiResponse(apiKey: String, prompt: String): String = withContext(Dispatchers.IO) {
-        try {
-            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey"
-            val url = URL(endpoint)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.doOutput = true
-
-            val systemInstruction = "You are JARVIS, an ultra-advanced 2050 AI Operating System assistant created by Stark Industries. Speak concisely, with British poise, intelligence, and sci-fi elegance. Limit answers to 2-3 sentences max."
-            val payload = JSONObject().apply {
-                put("contents", org.json.JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("parts", org.json.JSONArray().apply {
-                            put(JSONObject().put("text", "$systemInstruction\nUser: $prompt"))
-                        })
-                    })
-                })
-            }
-
-            OutputStreamWriter(conn.outputStream).use { writer ->
-                writer.write(payload.toString())
-                writer.flush()
-            }
-
-            if (conn.responseCode == 200) {
-                val responseText = conn.inputStream.bufferedReader().use { it.readText() }
-                val json = JSONObject(responseText)
-                val candidate = json.getJSONArray("candidates").getJSONObject(0)
-                val content = candidate.getJSONObject("content").getJSONArray("parts").getJSONObject(0)
-                content.getString("text").trim()
-            } else {
-                generateSciFiJarvisReply(prompt)
-            }
-        } catch (_: Exception) {
-            generateSciFiJarvisReply(prompt)
         }
     }
 
-    private fun generateSciFiJarvisReply(query: String): String {
-        val q = query.lowercase(Locale.ROOT)
-        return when {
-            q.contains("who are you") || q.contains("what are you") ->
-                "I am J.A.R.V.I.S. — Just A Rather Very Intelligent System. Operating as your primary neural interface and launcher controller."
-            q.contains("hello") || q.contains("hey jarvis") || q.contains("hi") ->
-                "Greetings. All primary OS subsystems are operational. How may I assist your operations today, sir?"
-            q.contains("time") || q.contains("what time") -> {
-                val time = telemetryProvider?.invoke()?.timeFormatted ?: "Unknown"
-                "The current synchronized local time is $time."
+    private fun executeAction(command: String?) {
+        if (command == null) return
+        when {
+            command == "CMD_TORCH_ON" -> hardwareController.toggleFlashlight { onFlashlightToggled?.invoke(true) }
+            command == "CMD_TORCH_OFF" -> hardwareController.toggleFlashlight { onFlashlightToggled?.invoke(false) }
+            command == "CMD_TORCH_TOGGLE" -> hardwareController.toggleFlashlight { onFlashlightToggled?.invoke(it) }
+            command == "CMD_OPEN_WIFI" -> hardwareController.openWifiSettings()
+            command == "CMD_OPEN_BT" -> hardwareController.openBluetoothSettings()
+            command == "CMD_AUDIO_SILENT" || command == "CMD_AUDIO_VIBRATE" || command == "CMD_AUDIO_NORMAL" -> {
+                hardwareController.cycleAudioMode()
             }
-            q.contains("weather") ->
-                "Atmospheric sensors indicate standard tropospheric conditions. Atmospheric pressure nominal."
-            q.contains("mark") || q.contains("suit") || q.contains("armor") ->
-                "Mark 85 nanotech protocols are standing by in the deployment bay."
-            else ->
-                "Acknowledged, sir. Neural matrices processed the directive: \"$query\". All tactical systems ready."
+            command.startsWith("CMD_LAUNCH_APP:") -> {
+                val pkg = command.removePrefix("CMD_LAUNCH_APP:")
+                hardwareController.launchApp(pkg)
+            }
+            command.startsWith("CMD_DIAL:") -> {
+                val num = command.removePrefix("CMD_DIAL:")
+                hardwareController.dialPhoneNumber(num)
+            }
         }
     }
 
-    fun speak(text: String) {
+    fun speak(text: String, tierUsed: String? = null) {
         _lastResponse.value = text
-        _voiceState.value = JarvisVoiceState.Speaking(text)
+        _voiceState.value = JarvisVoiceState.Speaking(text, tierUsed)
         if (isTtsReady && tts != null) {
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "JARVIS_TTS_${System.currentTimeMillis()}")
         }
@@ -308,7 +175,7 @@ class JarvisVoiceEngine(
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             tts?.language = Locale.US
-            tts?.setPitch(0.92f) // Slightly deeper, sophisticated AI cadence
+            tts?.setPitch(0.92f)
             tts?.setSpeechRate(1.05f)
             isTtsReady = true
         }

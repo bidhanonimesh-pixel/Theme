@@ -3,23 +3,22 @@ package com.example.launcher
 import android.app.Application
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
-import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.Room
+import com.example.ai.JarvisAiRepository
 import com.example.ai.JarvisVoiceEngine
-import com.example.ai.JarvisVoiceState
 import com.example.core.hardware.DeviceHardwareController
 import com.example.core.model.CyberColorPalette
 import com.example.core.model.LauncherSettings
 import com.example.core.model.PhysicsMode
 import com.example.core.sound.SoundEffectManager
+import com.example.core.telemetry.JarvisTelemetryService
 import com.example.core.telemetry.SystemTelemetryManager
 import com.example.core.telemetry.SystemTelemetryState
 import com.example.data.AppCustomizationEntity
 import com.example.data.AppDatabase
+import com.example.data.JarvisMemoryRepository
 import com.example.data.QuickContactEntity
 import com.example.launcher.model.AppItem
 import com.example.launcher.model.OrbitAppSlot
@@ -43,13 +42,19 @@ data class LauncherUiState(
     val favoriteApps: List<AppItem> = emptyList(),
     val hiddenApps: List<AppItem> = emptyList(),
     val orbitSlots: List<OrbitAppSlot> = emptyList(),
+    val wheelAppPackages: List<String> = emptyList(),
     val quickContacts: List<QuickContactEntity> = emptyList(),
+    val openRouterApiKey: String = "",
+    val openRouterModel: String = JarvisMemoryRepository.DEFAULT_OPENROUTER_MODEL,
     val isAppDrawerOpen: Boolean = false,
     val isPhysicsPlaygroundOpen: Boolean = false,
     val isDialerOpen: Boolean = false,
     val isAdminPanelOpen: Boolean = false,
     val isVoiceOverlayOpen: Boolean = false,
+    val isVisionScreenOpen: Boolean = false,
     val isAppLockPromptOpen: Boolean = false,
+    val isWheelAppPickerOpen: Boolean = false,
+    val selectedWheelSlotIndex: Int = 0,
     val pendingLaunchApp: AppItem? = null,
     val dialerInputText: String = "",
     val drawerSearchQuery: String = "",
@@ -66,10 +71,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     ).fallbackToDestructiveMigration().build()
     private val dao = db.launcherDao()
 
+    val memoryRepository = JarvisMemoryRepository(application, dao)
+    val aiRepository = JarvisAiRepository(application, memoryRepository)
     val soundManager = SoundEffectManager(application)
     val hardwareController = DeviceHardwareController(application)
     val telemetryManager = SystemTelemetryManager(application)
-    val voiceEngine = JarvisVoiceEngine(application, hardwareController)
+    val voiceEngine = JarvisVoiceEngine(application, hardwareController, aiRepository)
     val physicsEngine = PhysicsEngine()
 
     private val _settings = MutableStateFlow(LauncherSettings())
@@ -78,12 +85,18 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _isDialerOpen = MutableStateFlow(false)
     private val _isAdminPanelOpen = MutableStateFlow(false)
     private val _isVoiceOverlayOpen = MutableStateFlow(false)
+    private val _isVisionScreenOpen = MutableStateFlow(false)
     private val _isAppLockPromptOpen = MutableStateFlow(false)
+    private val _isWheelAppPickerOpen = MutableStateFlow(false)
+    private val _selectedWheelSlotIndex = MutableStateFlow(0)
     private val _pendingLaunchApp = MutableStateFlow<AppItem?>(null)
     private val _dialerInputText = MutableStateFlow("")
     private val _drawerSearchQuery = MutableStateFlow("")
     private val _selectedDrawerCategory = MutableStateFlow("All")
     private val _statusMessage = MutableStateFlow<String?>(null)
+    private val _wheelAppPackages = MutableStateFlow<List<String>>(emptyList())
+    private val _openRouterApiKey = MutableStateFlow("")
+    private val _openRouterModel = MutableStateFlow(JarvisMemoryRepository.DEFAULT_OPENROUTER_MODEL)
 
     private val _rawInstalledApps = MutableStateFlow<List<AppItem>>(emptyList())
     private val _physicsBodies = MutableStateFlow<List<PhysicsBody>>(emptyList())
@@ -95,11 +108,17 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _rawInstalledApps,
         dao.getAllCustomizationsFlow(),
         dao.getAllQuickContactsFlow(),
+        _wheelAppPackages,
+        _openRouterApiKey,
+        _openRouterModel,
         _isAppDrawerOpen,
         _isPhysicsPlaygroundOpen,
         _isDialerOpen,
         _isAdminPanelOpen,
         _isVoiceOverlayOpen,
+        _isVisionScreenOpen,
+        _isWheelAppPickerOpen,
+        _selectedWheelSlotIndex,
         _dialerInputText,
         _drawerSearchQuery,
         _selectedDrawerCategory
@@ -109,14 +128,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val rawApps = args[2] as List<AppItem>
         val customizations = args[3] as List<AppCustomizationEntity>
         val contacts = args[4] as List<QuickContactEntity>
-        val isDrawer = args[5] as Boolean
-        val isPhysics = args[6] as Boolean
-        val isDialer = args[7] as Boolean
-        val isAdmin = args[8] as Boolean
-        val isVoice = args[9] as Boolean
-        val dialerInput = args[10] as String
-        val searchQuery = args[11] as String
-        val selectedCategory = args[12] as String
+        val wheelPkgs = args[5] as List<String>
+        val orApiKey = args[6] as String
+        val orModel = args[7] as String
+        val isDrawer = args[8] as Boolean
+        val isPhysics = args[9] as Boolean
+        val isDialer = args[10] as Boolean
+        val isAdmin = args[11] as Boolean
+        val isVoice = args[12] as Boolean
+        val isVision = args[13] as Boolean
+        val isWheelPicker = args[14] as Boolean
+        val wheelSlotIdx = args[15] as Int
+        val dialerInput = args[16] as String
+        val searchQuery = args[17] as String
+        val selectedCategory = args[18] as String
 
         val custMap = customizations.associateBy { it.packageName }
         val mergedApps = rawApps.map { base ->
@@ -150,13 +175,19 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             favoriteApps = favorites,
             hiddenApps = hidden,
             orbitSlots = orbitSlots,
+            wheelAppPackages = wheelPkgs,
             quickContacts = if (contacts.isNotEmpty()) contacts else getDefaultContacts(),
+            openRouterApiKey = orApiKey,
+            openRouterModel = orModel,
             isAppDrawerOpen = isDrawer,
             isPhysicsPlaygroundOpen = isPhysics,
             isDialerOpen = isDialer,
             isAdminPanelOpen = isAdmin,
             isVoiceOverlayOpen = isVoice,
+            isVisionScreenOpen = isVision,
             isAppLockPromptOpen = _isAppLockPromptOpen.value,
+            isWheelAppPickerOpen = isWheelPicker,
+            selectedWheelSlotIndex = wheelSlotIdx,
             pendingLaunchApp = _pendingLaunchApp.value,
             dialerInputText = dialerInput,
             drawerSearchQuery = searchQuery,
@@ -172,13 +203,35 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     init {
         loadInstalledApps()
         seedInitialQuickContacts()
+        loadStoredConfigs()
 
         voiceEngine.setProviders(
             apps = { _rawInstalledApps.value },
             telemetry = { telemetryManager.telemetryState.value },
-            apiKey = { _settings.value.customApiKey },
             onTorch = { state -> telemetryManager.setFlashlightState(state) }
         )
+
+        // Start background telemetry and thermal protection service
+        try {
+            JarvisTelemetryService.startService(application)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun loadStoredConfigs() {
+        viewModelScope.launch {
+            val geminiKey = memoryRepository.getGeminiApiKey()
+            val orKey = memoryRepository.getOpenRouterApiKey()
+            val orModel = memoryRepository.getOpenRouterModel()
+            val wheelPkgs = memoryRepository.getWheelAppPackages()
+
+            _openRouterApiKey.value = orKey
+            _openRouterModel.value = orModel
+            _wheelAppPackages.value = wheelPkgs
+            if (geminiKey.isNotBlank()) {
+                _settings.value = _settings.value.copy(customApiKey = geminiKey)
+            }
+        }
     }
 
     fun loadInstalledApps() {
@@ -224,7 +277,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun buildOrbitSlots(apps: List<AppItem>): List<OrbitAppSlot> {
-        // 6 Orbit Slots around the Arc Reactor HUD Core matching user screenshot!
         val topSlot = findAppByKeywords(apps, listOf("play", "store", "market", "vending"))
         val rightTopSlot = findAppByKeywords(apps, listOf("gmail", "email", "mail", "outlook"))
         val rightBottomSlot = findAppByKeywords(apps, listOf("google", "search", "chrome", "browser"))
@@ -252,8 +304,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     private fun seedInitialQuickContacts() {
         viewModelScope.launch(Dispatchers.IO) {
-            val existing = dao.getAllQuickContactsFlow()
-            // Quick default contacts
             val defaults = getDefaultContacts()
             defaults.forEach { dao.insertContact(it) }
         }
@@ -328,6 +378,37 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         if (newState) {
             initPhysicsSimulation()
         }
+    }
+
+    fun toggleVisionScreen(open: Boolean? = null) {
+        _isVisionScreenOpen.value = open ?: !_isVisionScreenOpen.value
+        if (_isVisionScreenOpen.value) {
+            soundManager.playSciFiBeep(SoundEffectManager.ToneType.CONFIRM)
+        }
+    }
+
+    fun openWheelAppPicker(slotIndex: Int) {
+        _selectedWheelSlotIndex.value = slotIndex
+        _isWheelAppPickerOpen.value = true
+    }
+
+    fun closeWheelAppPicker() {
+        _isWheelAppPickerOpen.value = false
+    }
+
+    fun assignAppToWheelSlot(slotIndex: Int, packageName: String) {
+        val current = _wheelAppPackages.value.toMutableList()
+        while (current.size <= slotIndex) {
+            current.add("")
+        }
+        current[slotIndex] = packageName
+        _wheelAppPackages.value = current
+        _isWheelAppPickerOpen.value = false
+
+        viewModelScope.launch {
+            memoryRepository.setWheelAppPackages(current)
+        }
+        soundManager.playSciFiBeep(SoundEffectManager.ToneType.CONFIRM)
     }
 
     fun initPhysicsSimulation(width: Float = 1080f, height: Float = 1920f) {
@@ -430,10 +511,18 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         soundManager.playSciFiBeep(SoundEffectManager.ToneType.CONFIRM)
     }
 
-    fun updateSettings(newSettings: LauncherSettings) {
+    fun updateSettings(newSettings: LauncherSettings, openRouterKey: String, openRouterModel: String) {
         _settings.value = newSettings
+        _openRouterApiKey.value = openRouterKey
+        _openRouterModel.value = openRouterModel
         physicsEngine.updateParameters(newSettings.physicsGravityStrength, newSettings.physicsBounciness)
         physicsEngine.currentMode = newSettings.physicsMode
+
+        viewModelScope.launch {
+            memoryRepository.setGeminiApiKey(newSettings.customApiKey)
+            memoryRepository.setOpenRouterApiKey(openRouterKey)
+            memoryRepository.setOpenRouterModel(openRouterModel)
+        }
     }
 
     fun updateAppCustomization(

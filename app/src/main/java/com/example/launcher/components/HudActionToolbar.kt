@@ -17,12 +17,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -43,6 +45,7 @@ fun HudActionToolbar(
     onSettingsClick: () -> Unit,
     onFlashlightClick: () -> Unit,
     onPhysicsClick: () -> Unit,
+    onVisionClick: () -> Unit,
     onAiMicClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -60,15 +63,15 @@ fun HudActionToolbar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 40.dp, vertical = 8.dp),
+            .padding(horizontal = 28.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Settings Gear
+        // 1. Settings Gear
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(44.dp)
+                .size(42.dp)
                 .clip(CircleShape)
                 .background(palette.surfaceDark.copy(alpha = 0.6f))
                 .border(1.dp, palette.primaryCyan.copy(alpha = 0.5f), CircleShape)
@@ -79,15 +82,34 @@ fun HudActionToolbar(
                 imageVector = Icons.Default.Settings,
                 contentDescription = "Settings",
                 tint = palette.primaryCyan,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(22.dp)
             )
         }
 
-        // Center Flashlight Lightning Bolt (Primary Glowing Action)
+        // 2. Vision / Tactical Optical Scanner
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(54.dp)
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(palette.surfaceDark.copy(alpha = 0.6f))
+                .border(1.dp, palette.primaryCyan.copy(alpha = 0.5f), CircleShape)
+                .clickable { onVisionClick() }
+                .testTag("action_vision")
+        ) {
+            Icon(
+                imageVector = Icons.Default.Visibility,
+                contentDescription = "Vision Scanner",
+                tint = palette.primaryCyan,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+
+        // 3. Center Flashlight Lightning Bolt (Primary Glowing Action)
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(52.dp)
                 .clip(CircleShape)
                 .background(
                     if (isTorchOn) Brush.radialGradient(
@@ -114,15 +136,15 @@ fun HudActionToolbar(
                 imageVector = Icons.Default.FlashOn,
                 contentDescription = "Flashlight",
                 tint = if (isTorchOn) palette.secondaryAccent else palette.primaryCyan,
-                modifier = Modifier.size(30.dp)
+                modifier = Modifier.size(28.dp)
             )
         }
 
-        // Physics Playground / Sensor Radar
+        // 4. Physics Playground / Sensor Radar
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(44.dp)
+                .size(42.dp)
                 .clip(CircleShape)
                 .background(palette.surfaceDark.copy(alpha = 0.6f))
                 .border(1.dp, palette.primaryCyan.copy(alpha = 0.5f), CircleShape)
@@ -133,7 +155,7 @@ fun HudActionToolbar(
                 imageVector = Icons.Default.Radar,
                 contentDescription = "Physics Gravity Engine",
                 tint = palette.primaryCyan,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(22.dp)
             )
         }
     }

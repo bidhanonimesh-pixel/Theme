@@ -66,8 +66,10 @@ import com.example.core.theme.sciFiHudBackground
 @Composable
 fun AdminLockdownDialog(
     currentSettings: LauncherSettings,
+    openRouterApiKey: String,
+    openRouterModel: String,
     hardwareController: DeviceHardwareController,
-    onSaveSettings: (LauncherSettings) -> Unit,
+    onSaveSettings: (LauncherSettings, String, String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var isPinVerified by remember { mutableStateOf(false) }
@@ -82,10 +84,17 @@ fun AdminLockdownDialog(
     var elasticity by remember { mutableFloatStateOf(currentSettings.physicsBounciness) }
     var soundEnabled by remember { mutableStateOf(currentSettings.soundEffectsEnabled) }
     var hapticEnabled by remember { mutableStateOf(currentSettings.hapticFeedbackEnabled) }
-    var lockdownEnforced by remember { mutableStateOf(currentSettings.isLockdownEnforced) }
-    var disableSettingsAccess by remember { mutableStateOf(currentSettings.disableDeviceSettingsAccess) }
     var customApiKey by remember { mutableStateOf(currentSettings.customApiKey) }
+    var openRouterKey by remember { mutableStateOf(openRouterApiKey) }
+    var currentOrModel by remember { mutableStateOf(openRouterModel) }
     var newAdminPin by remember { mutableStateOf(currentSettings.adminPin) }
+
+    val openRouterPresets = listOf(
+        "deepseek/deepseek-chat",
+        "meta-llama/llama-3.3-70b-instruct",
+        "anthropic/claude-3.5-sonnet",
+        "mistralai/mistral-7b-instruct"
+    )
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -211,7 +220,7 @@ fun AdminLockdownDialog(
                                 fontSize = 18.sp
                             )
                             Text(
-                                text = "Security Lockdown & Granular Theme Matrix",
+                                text = "Multi-Tier AI, Launcher Matrix & Theme Config",
                                 style = CyberTypography.labelSmall,
                                 color = selectedPalette.secondaryAccent,
                                 fontSize = 11.sp
@@ -256,7 +265,102 @@ fun AdminLockdownDialog(
                             }
                         }
 
-                        // Section 2: Cyber Theme Palette Selection
+                        // Section 2: Multi-Tier AI Configuration
+                        SectionCard(title = "MULTI-TIER AI ENGINE (GEMINI & OPENROUTER)", palette = selectedPalette) {
+                            Text(
+                                text = "Tier 1: Google Gemini API Key",
+                                style = CyberTypography.labelSmall,
+                                color = selectedPalette.primaryCyan
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            OutlinedTextField(
+                                value = customApiKey,
+                                onValueChange = { customApiKey = it },
+                                placeholder = { Text("AIzaSy...", color = Color.Gray, style = CyberTypography.bodyMedium) },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = selectedPalette.primaryCyan,
+                                    unfocusedBorderColor = selectedPalette.primaryCyan.copy(alpha = 0.4f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                ),
+                                textStyle = CyberTypography.bodyMedium,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Text(
+                                text = "Tier 2: OpenRouter API Key (Fallback)",
+                                style = CyberTypography.labelSmall,
+                                color = selectedPalette.secondaryAccent
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            OutlinedTextField(
+                                value = openRouterKey,
+                                onValueChange = { openRouterKey = it },
+                                placeholder = { Text("sk-or-v1-...", color = Color.Gray, style = CyberTypography.bodyMedium) },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = selectedPalette.secondaryAccent,
+                                    unfocusedBorderColor = selectedPalette.secondaryAccent.copy(alpha = 0.4f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                ),
+                                textStyle = CyberTypography.bodyMedium,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Text(
+                                text = "Selected OpenRouter Model",
+                                style = CyberTypography.labelSmall,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            OutlinedTextField(
+                                value = currentOrModel,
+                                onValueChange = { currentOrModel = it },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = selectedPalette.primaryCyan,
+                                    unfocusedBorderColor = selectedPalette.primaryCyan.copy(alpha = 0.4f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                ),
+                                textStyle = CyberTypography.bodyMedium,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                openRouterPresets.forEach { modelPreset ->
+                                    val isSelected = currentOrModel == modelPreset
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isSelected) selectedPalette.primaryCyan.copy(alpha = 0.25f) else selectedPalette.surfaceDark)
+                                            .border(1.dp, if (isSelected) selectedPalette.primaryCyan else Color.DarkGray, RoundedCornerShape(6.dp))
+                                            .clickable { currentOrModel = modelPreset }
+                                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = modelPreset.substringAfter("/"),
+                                            style = CyberTypography.labelSmall,
+                                            fontSize = 9.sp,
+                                            color = if (isSelected) selectedPalette.primaryCyan else Color.LightGray
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Section 3: Cyber Theme Palette Selection
                         SectionCard(title = "CYBERNETIC COLOR MATRIX", palette = selectedPalette) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 CyberColorPalette.values().forEach { paletteItem ->
@@ -301,7 +405,7 @@ fun AdminLockdownDialog(
                             }
                         }
 
-                        // Section 3: Visual & HUD Sliders
+                        // Section 4: Visual & HUD Sliders
                         SectionCard(title = "HUD DYNAMICS & GLOW INTENSITY", palette = selectedPalette) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(
@@ -336,7 +440,7 @@ fun AdminLockdownDialog(
                             }
                         }
 
-                        // Section 4: Physics Engine Constants
+                        // Section 5: Physics Engine Constants
                         SectionCard(title = "2D/3D PHYSICS CONSTANTS", palette = selectedPalette) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(
@@ -371,7 +475,7 @@ fun AdminLockdownDialog(
                             }
                         }
 
-                        // Section 5: Audio & Toggles
+                        // Section 6: Audio & Toggles
                         SectionCard(title = "AUDIO & HAPTIC FEEDBACK", palette = selectedPalette) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -397,31 +501,6 @@ fun AdminLockdownDialog(
                                     colors = SwitchDefaults.colors(checkedThumbColor = selectedPalette.primaryCyan)
                                 )
                             }
-                        }
-
-                        // Section 6: AI API Configuration
-                        SectionCard(title = "JARVIS AI ENGINE API KEY", palette = selectedPalette) {
-                            Text(
-                                text = "Optionally insert your Google Gemini or custom API Key for online intelligence synthesis.",
-                                style = CyberTypography.bodyMedium,
-                                color = Color.LightGray,
-                                fontSize = 11.sp
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            OutlinedTextField(
-                                value = customApiKey,
-                                onValueChange = { customApiKey = it },
-                                placeholder = { Text("AIzaSy...", color = Color.Gray, style = CyberTypography.bodyMedium) },
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = selectedPalette.primaryCyan,
-                                    unfocusedBorderColor = selectedPalette.primaryCyan.copy(alpha = 0.4f),
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
-                                ),
-                                textStyle = CyberTypography.bodyMedium,
-                                modifier = Modifier.fillMaxWidth()
-                            )
                         }
 
                         // Section 7: Master Admin PIN Change
@@ -460,7 +539,7 @@ fun AdminLockdownDialog(
                                 customApiKey = customApiKey.trim(),
                                 adminPin = if (newAdminPin.isNotBlank()) newAdminPin else "0000"
                             )
-                            onSaveSettings(updated)
+                            onSaveSettings(updated, openRouterKey.trim(), currentOrModel.trim())
                             onDismiss()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = selectedPalette.primaryCyan),
