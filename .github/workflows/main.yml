@@ -11,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       # 1. Checkout project
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,7 +19,7 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
 
       # 3. Android SDK
@@ -63,21 +62,25 @@ jobs:
           echo "Project files:"
           ls -la
 
-      # 8. Clean
+      # 8. Fix Gradle Property Flag
+      - name: Disable Kotlin SourceSets Flag
+        run: echo "android.disallowKotlinSourceSets=false" >> gradle.properties
+
+      # 9. Clean
       - name: Clean
         run: gradle clean
 
-      # 9. Build APK
+      # 10. Build APK
       - name: Build Debug APK
         run: gradle assembleDebug --stacktrace
 
-      # 10. Find APK
+      # 11. Find APK
       - name: Find APK
         run: |
           echo "Generated APK files:"
           find . -type f -name "*.apk" -print
 
-      # 11. Upload APK
+      # 12. Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
