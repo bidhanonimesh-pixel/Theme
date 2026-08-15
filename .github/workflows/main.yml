@@ -12,11 +12,11 @@ jobs:
 
     steps:
 
-      # 1. Download source code
+      # 1. Get project source code
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Setup Java
+      # 2. Setup Java 17
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -28,7 +28,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
 
-      # 4. Create Android Debug Keystore
+      # 4. Create debug keystore
       - name: Create debug keystore
         run: |
           keytool -genkeypair \
@@ -42,44 +42,40 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
-      # 5. Put debug keystore where the project expects it
-      - name: Copy debug keystore
-        run: |
-          cp debug.keystore ./debug.keystore
-          cp debug.keystore ./app/debug.keystore
-
-      # 6. Fix KSP version for Kotlin 2.2.10
+      # 5. Fix KSP version
       - name: Fix KSP version
         run: |
-          echo "Checking Kotlin/KSP configuration..."
-          grep -n "googleDevtoolsKsp" gradle/libs.versions.toml || true
-          sed -i 's/googleDevtoolsKsp = "2.3.5"/googleDevtoolsKsp = "2.2.10-2.0.2"/g' gradle/libs.versions.toml
-          echo "Updated KSP configuration:"
+          echo "Current KSP version:"
           grep -n "googleDevtoolsKsp" gradle/libs.versions.toml || true
 
-      # 7. Setup Gradle
+          sed -i 's/googleDevtoolsKsp = "2.3.5"/googleDevtoolsKsp = "2.2.10-2.0.2"/g' gradle/libs.versions.toml
+
+          echo "KSP version after fix:"
+          grep -n "googleDevtoolsKsp" gradle/libs.versions.toml || true
+
+      # 6. Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      # 8. Make Gradle executable
+      # 7. Make Gradle executable
       - name: Make Gradle executable
-        run: chmod +x gradlew
+        run: chmod +x ./gradlew
 
-      # 9. Clean previous build
+      # 8. Clean project
       - name: Clean
         run: ./gradlew clean
 
-      # 10. Build Debug APK
+      # 9. Build Debug APK
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
-      # 11. Find APK
+      # 10. Show generated APK
       - name: Find APK
         run: |
-          echo "APK files:"
+          echo "Searching for APK..."
           find app/build/outputs/apk -type f -name "*.apk" -print
 
-      # 12. Upload APK
+      # 11. Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
