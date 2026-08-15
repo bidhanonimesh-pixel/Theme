@@ -3,25 +3,32 @@ name: Build APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+
+      # 1. Download source code
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 2. Setup Java
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
+      # 3. Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
 
+      # 4. Create Android Debug Keystore
       - name: Create debug keystore
         run: |
           keytool -genkeypair \
@@ -35,14 +42,47 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
+      # 5. Put debug keystore where the project expects it
+      - name: Copy debug keystore
+        run: |
+          cp debug.keystore ./debug.keystore
+          cp debug.keystore ./app/debug.keystore
+
+      # 6. Fix KSP version for Kotlin 2.2.10
+      - name: Fix KSP version
+        run: |
+          echo "Checking Kotlin/KSP configuration..."
+          grep -n "googleDevtoolsKsp" gradle/libs.versions.toml || true
+          sed -i 's/googleDevtoolsKsp = "2.3.5"/googleDevtoolsKsp = "2.2.10-2.0.2"/g' gradle/libs.versions.toml
+          echo "Updated KSP configuration:"
+          grep -n "googleDevtoolsKsp" gradle/libs.versions.toml || true
+
+      # 7. Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Build Debug APK
-        run: gradle assembleDebug
+      # 8. Make Gradle executable
+      - name: Make Gradle executable
+        run: chmod +x gradlew
 
+      # 9. Clean previous build
+      - name: Clean
+        run: ./gradlew clean
+
+      # 10. Build Debug APK
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      # 11. Find APK
+      - name: Find APK
+        run: |
+          echo "APK files:"
+          find app/build/outputs/apk -type f -name "*.apk" -print
+
+      # 12. Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Jarvis-APK
+          name: Jarvis-OS-Launcher-APK
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
