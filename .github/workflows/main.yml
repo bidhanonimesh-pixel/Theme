@@ -12,19 +12,18 @@ jobs:
 
     steps:
 
-      # 1. Get project source code
+      # 1. Checkout project
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Setup Java 17
+      # 2. Java 17
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
-      # 3. Setup Android SDK
+      # 3. Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
 
@@ -45,35 +44,38 @@ jobs:
       # 5. Fix KSP version
       - name: Fix KSP version
         run: |
-          echo "Current KSP version:"
+          echo "KSP before:"
           grep -n "googleDevtoolsKsp" gradle/libs.versions.toml || true
 
           sed -i 's/googleDevtoolsKsp = "2.3.5"/googleDevtoolsKsp = "2.2.10-2.0.2"/g' gradle/libs.versions.toml
 
-          echo "KSP version after fix:"
+          echo "KSP after:"
           grep -n "googleDevtoolsKsp" gradle/libs.versions.toml || true
 
       # 6. Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      # 7. Make Gradle executable
-      - name: Make Gradle executable
-        run: chmod +x ./gradlew
+      # 7. Check Gradle
+      - name: Check Gradle
+        run: |
+          gradle --version
+          echo "Project files:"
+          ls -la
 
-      # 8. Clean project
+      # 8. Clean
       - name: Clean
-        run: ./gradlew clean
+        run: gradle clean
 
-      # 9. Build Debug APK
+      # 9. Build APK
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: gradle assembleDebug --stacktrace
 
-      # 10. Show generated APK
+      # 10. Find APK
       - name: Find APK
         run: |
-          echo "Searching for APK..."
-          find app/build/outputs/apk -type f -name "*.apk" -print
+          echo "Generated APK files:"
+          find . -type f -name "*.apk" -print
 
       # 11. Upload APK
       - name: Upload APK
