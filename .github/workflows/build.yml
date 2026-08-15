@@ -21,7 +21,15 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Ensure Local Environment File
+        run: |
+          if [ ! -f .env ]; then
+            echo "GEMINI_API_KEY=" > .env
+          fi
 
       - name: Grant Execute Permission to Gradle Wrapper
         run: chmod +x gradlew
