@@ -50,6 +50,14 @@ class JarvisMemoryRepository(context: Context, private val launcherDao: Launcher
         configDao.setConfigValue(JarvisConfigEntity(KEY_GEMINI_API, key.trim()))
     }
 
+    suspend fun getGeminiModel(): String = withContext(Dispatchers.IO) {
+        configDao.getConfigValue(KEY_GEMINI_MODEL) ?: DEFAULT_GEMINI_MODEL
+    }
+
+    suspend fun setGeminiModel(model: String) = withContext(Dispatchers.IO) {
+        configDao.setConfigValue(JarvisConfigEntity(KEY_GEMINI_MODEL, model.trim()))
+    }
+
     suspend fun getOpenRouterApiKey(): String = withContext(Dispatchers.IO) {
         configDao.getConfigValue(KEY_OPENROUTER_API) ?: ""
     }
@@ -91,9 +99,11 @@ class JarvisMemoryRepository(context: Context, private val launcherDao: Launcher
 
     companion object {
         private const val KEY_GEMINI_API = "gemini_api_key"
+        private const val KEY_GEMINI_MODEL = "gemini_model"
         private const val KEY_OPENROUTER_API = "openrouter_api_key"
         private const val KEY_OPENROUTER_MODEL = "openrouter_model"
         private const val KEY_WHEEL_APPS = "wheel_app_packages"
+        const val DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
         const val DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-chat"
     }
 }

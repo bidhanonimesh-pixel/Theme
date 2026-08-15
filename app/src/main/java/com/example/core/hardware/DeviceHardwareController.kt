@@ -93,19 +93,22 @@ class DeviceHardwareController(private val context: Context) {
     }
 
     fun dialPhoneNumber(number: String) {
-        val intent = Intent(Intent.ACTION_DIAL).apply {
-            data = Uri.parse("tel:$number")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val cleanNumber = number.trim()
+        val intent = if (cleanNumber.isBlank()) {
+            Intent(Intent.ACTION_DIAL).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        } else {
+            Intent(Intent.ACTION_DIAL).apply {
+                data = Uri.parse("tel:${Uri.encode(cleanNumber)}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
         }
         safeStartActivity(intent)
     }
 
     fun directCallPhoneNumber(number: String) {
-        val intent = Intent(Intent.ACTION_CALL).apply {
-            data = Uri.parse("tel:$number")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        safeStartActivity(intent)
+        dialPhoneNumber(number)
     }
 
     fun sendSms(number: String, body: String = "") {

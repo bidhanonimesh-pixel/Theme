@@ -44,6 +44,7 @@ data class LauncherUiState(
     val orbitSlots: List<OrbitAppSlot> = emptyList(),
     val wheelAppPackages: List<String> = emptyList(),
     val quickContacts: List<QuickContactEntity> = emptyList(),
+    val geminiModel: String = JarvisMemoryRepository.DEFAULT_GEMINI_MODEL,
     val openRouterApiKey: String = "",
     val openRouterModel: String = JarvisMemoryRepository.DEFAULT_OPENROUTER_MODEL,
     val isAppDrawerOpen: Boolean = false,
@@ -95,6 +96,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _selectedDrawerCategory = MutableStateFlow("All")
     private val _statusMessage = MutableStateFlow<String?>(null)
     private val _wheelAppPackages = MutableStateFlow<List<String>>(emptyList())
+    private val _geminiModel = MutableStateFlow(JarvisMemoryRepository.DEFAULT_GEMINI_MODEL)
     private val _openRouterApiKey = MutableStateFlow("")
     private val _openRouterModel = MutableStateFlow(JarvisMemoryRepository.DEFAULT_OPENROUTER_MODEL)
 
@@ -109,6 +111,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         dao.getAllCustomizationsFlow(),
         dao.getAllQuickContactsFlow(),
         _wheelAppPackages,
+        _geminiModel,
         _openRouterApiKey,
         _openRouterModel,
         _isAppDrawerOpen,
@@ -129,19 +132,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val customizations = args[3] as List<AppCustomizationEntity>
         val contacts = args[4] as List<QuickContactEntity>
         val wheelPkgs = args[5] as List<String>
-        val orApiKey = args[6] as String
-        val orModel = args[7] as String
-        val isDrawer = args[8] as Boolean
-        val isPhysics = args[9] as Boolean
-        val isDialer = args[10] as Boolean
-        val isAdmin = args[11] as Boolean
-        val isVoice = args[12] as Boolean
-        val isVision = args[13] as Boolean
-        val isWheelPicker = args[14] as Boolean
-        val wheelSlotIdx = args[15] as Int
-        val dialerInput = args[16] as String
-        val searchQuery = args[17] as String
-        val selectedCategory = args[18] as String
+        val gModel = args[6] as String
+        val orApiKey = args[7] as String
+        val orModel = args[8] as String
+        val isDrawer = args[9] as Boolean
+        val isPhysics = args[10] as Boolean
+        val isDialer = args[11] as Boolean
+        val isAdmin = args[12] as Boolean
+        val isVoice = args[13] as Boolean
+        val isVision = args[14] as Boolean
+        val isWheelPicker = args[15] as Boolean
+        val wheelSlotIdx = args[16] as Int
+        val dialerInput = args[17] as String
+        val searchQuery = args[18] as String
+        val selectedCategory = args[19] as String
 
         val custMap = customizations.associateBy { it.packageName }
         val mergedApps = rawApps.map { base ->
@@ -177,6 +181,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             orbitSlots = orbitSlots,
             wheelAppPackages = wheelPkgs,
             quickContacts = if (contacts.isNotEmpty()) contacts else getDefaultContacts(),
+            geminiModel = gModel,
             openRouterApiKey = orApiKey,
             openRouterModel = orModel,
             isAppDrawerOpen = isDrawer,
@@ -221,10 +226,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private fun loadStoredConfigs() {
         viewModelScope.launch {
             val geminiKey = memoryRepository.getGeminiApiKey()
+            val geminiModel = memoryRepository.getGeminiModel()
             val orKey = memoryRepository.getOpenRouterApiKey()
             val orModel = memoryRepository.getOpenRouterModel()
             val wheelPkgs = memoryRepository.getWheelAppPackages()
 
+            _geminiModel.value = geminiModel
             _openRouterApiKey.value = orKey
             _openRouterModel.value = orModel
             _wheelAppPackages.value = wheelPkgs
@@ -511,8 +518,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         soundManager.playSciFiBeep(SoundEffectManager.ToneType.CONFIRM)
     }
 
-    fun updateSettings(newSettings: LauncherSettings, openRouterKey: String, openRouterModel: String) {
+    fun updateSettings(newSettings: LauncherSettings, geminiModel: String, openRouterKey: String, openRouterModel: String) {
         _settings.value = newSettings
+        _geminiModel.value = geminiModel
         _openRouterApiKey.value = openRouterKey
         _openRouterModel.value = openRouterModel
         physicsEngine.updateParameters(newSettings.physicsGravityStrength, newSettings.physicsBounciness)
@@ -520,6 +528,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
         viewModelScope.launch {
             memoryRepository.setGeminiApiKey(newSettings.customApiKey)
+            memoryRepository.setGeminiModel(geminiModel)
             memoryRepository.setOpenRouterApiKey(openRouterKey)
             memoryRepository.setOpenRouterModel(openRouterModel)
         }

@@ -348,11 +348,12 @@ class MainActivity : ComponentActivity() {
                     if (uiState.isAdminPanelOpen) {
                         AdminLockdownDialog(
                             currentSettings = uiState.settings,
+                            geminiModel = uiState.geminiModel,
                             openRouterApiKey = uiState.openRouterApiKey,
                             openRouterModel = uiState.openRouterModel,
                             hardwareController = viewModel.hardwareController,
-                            onSaveSettings = { updatedSettings, orKey, orModel ->
-                                viewModel.updateSettings(updatedSettings, orKey, orModel)
+                            onSaveSettings = { updatedSettings, gModel, orKey, orModel ->
+                                viewModel.updateSettings(updatedSettings, gModel, orKey, orModel)
                             },
                             onDismiss = { viewModel.toggleAdminPanel(false) }
                         )

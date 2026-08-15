@@ -31,7 +31,6 @@ android {
       keyAlias = "upload"
       keyPassword = System.getenv("KEY_PASSWORD")
     }
-    // Safe debug keystore: uses local file if present, otherwise defaults to AGP debug certificate
     val localDebugKeystore = file("${rootDir}/debug.keystore")
     if (localDebugKeystore.exists()) {
       create("debugConfig") {
@@ -57,42 +56,37 @@ android {
       }
     }
   }
-
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
   }
-
   lint {
     abortOnError = false
     checkReleaseBuilds = false
   }
-
   buildFeatures {
     compose = true
     buildConfig = true
   }
-
-  testOptions {
-    unitTests { isIncludeAndroidResources = true }
-  }
-
+  testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true
   }
 }
 
+// Configure the Secrets Gradle Plugin to use .env and .env.example files
+// to match the convention used in Web projects.
 secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
 }
 
-googleServices {
-  missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN
-}
+googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
 
+// Some unused dependencies are commented out below instead of being removed.
+// This makes it easy to add them back in the future if needed.
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
@@ -119,12 +113,22 @@ dependencies {
   implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)
+  // Uncomment to use Firestore:
+  // implementation(libs.firebase.firestore)
+
+  // Uncomment ALL FOUR of the following dependencies together to use Firebase Auth and Google
+  // Sign-In via Credential Manager:
+  // implementation(libs.firebase.auth)
+  // implementation(libs.androidx.credentials)
+  // implementation(libs.androidx.credentials.play.services)
+  // implementation(libs.googleid)
   implementation(libs.firebase.appcheck.recaptcha)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
+  // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)

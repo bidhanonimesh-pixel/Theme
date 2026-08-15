@@ -57,45 +57,64 @@ class JarvisAiRepository(
             return@withContext AiResponseResult.Success(fallback, "Offline Neural Matrix")
         }
 
-        val geminiKey = memoryRepo.getGeminiApiKey()
+        val geminiKey = memoryRepo.getGeminiApiKey().ifBlank {
+            try {
+                com.example.BuildConfig.GEMINI_API_KEY
+            } catch (_: Throwable) {
+                ""
+            }
+        }
+        val geminiModel = memoryRepo.getGeminiModel().ifBlank { JarvisMemoryRepository.DEFAULT_GEMINI_MODEL }
         val openRouterKey = memoryRepo.getOpenRouterApiKey()
-        val openRouterModel = memoryRepo.getOpenRouterModel()
+        val openRouterModel = memoryRepo.getOpenRouterModel().ifBlank { JarvisMemoryRepository.DEFAULT_OPENROUTER_MODEL }
 
         // Tier 1: Primary Google Gemini API
         if (geminiKey.isNotBlank()) {
-            val geminiResult = queryGemini(geminiKey, cleanQuery)
-            if (geminiResult != null) {
-                memoryRepo.logAiInteraction(cleanQuery, geminiResult, "GEMINI_API")
-                return@withContext AiResponseResult.Success(geminiResult, "Tier 1: Google Gemini Flash")
+            val geminiResult = queryGemini(geminiKey, geminiModel, cleanQuery)
+            if (geminiResult.isSuccess) {
+                val text = geminiResult.getOrNull().orEmpty()
+                memoryRepo.logAiInteraction(cleanQuery, text, "GEMINI_API")
+                return@withContext AiResponseResult.Success(text, "Google Gemini ($geminiModel)")
+            } else {
+                val err = geminiResult.exceptionOrNull()?.message ?: "Unknown error"
+                Log.w("JarvisAiRepository", "Tier 1 Gemini call failed ($err), evaluating fallback...")
+                if (openRouterKey.isBlank()) {
+                    // Report error to UI if no fallback configured
+                    val reply = "Gemini API error ($err). Using local heuristics."
+                    val fallback = generateOfflinePersonaReply(cleanQuery, telemetry)
+                    return@withContext AiResponseResult.Success("$reply\n$fallback", "Offline Fallback")
+                }
             }
-            Log.w("JarvisAiRepository", "Tier 1 Gemini call failed, falling back to Tier 2 OpenRouter...")
         }
 
         // Tier 2: Secondary OpenRouter API
         if (openRouterKey.isNotBlank()) {
             val openRouterResult = queryOpenRouter(openRouterKey, openRouterModel, cleanQuery)
-            if (openRouterResult != null) {
-                memoryRepo.logAiInteraction(cleanQuery, openRouterResult, "OPENROUTER_API")
-                return@withContext AiResponseResult.Success(openRouterResult, "Tier 2: OpenRouter ($openRouterModel)")
+            if (openRouterResult.isSuccess) {
+                val text = openRouterResult.getOrNull().orEmpty()
+                memoryRepo.logAiInteraction(cleanQuery, text, "OPENROUTER_API")
+                return@withContext AiResponseResult.Success(text, "OpenRouter ($openRouterModel)")
+            } else {
+                val err = openRouterResult.exceptionOrNull()?.message ?: "Unknown error"
+                Log.w("JarvisAiRepository", "Tier 2 OpenRouter call failed ($err), falling back to offline heuristics...")
             }
-            Log.w("JarvisAiRepository", "Tier 2 OpenRouter call failed, falling back to Tier 3 Offline persona...")
         }
 
         // Tier 3: Offline Persona Synthesis Fallback
         val offlineFallback = generateOfflinePersonaReply(cleanQuery, telemetry)
         memoryRepo.logAiInteraction(cleanQuery, offlineFallback, "TIER3_OFFLINE_SYNTHESIS")
-        AiResponseResult.Success(offlineFallback, "Tier 3: Local Neural Heuristics")
+        AiResponseResult.Success(offlineFallback, "Local Neural Heuristics")
     }
 
-    private fun queryGemini(apiKey: String, prompt: String): String? {
+    private fun queryGemini(apiKey: String, model: String, prompt: String): Result<String> {
         return try {
-            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey"
+            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
             val url = URL(endpoint)
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
-                setRequestProperty("Content-Type", "application/json")
-                connectTimeout = 8000
-                readTimeout = 8000
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                connectTimeout = 15000
+                readTimeout = 15000
                 doOutput = true
             }
 
@@ -103,45 +122,70 @@ class JarvisAiRepository(
                 put("contents", JSONArray().apply {
                     put(JSONObject().apply {
                         put("parts", JSONArray().apply {
-                            put(JSONObject().put("text", "$systemPrompt\nUser: $prompt"))
+                            put(JSONObject().put("text", "$systemPrompt\nUser Directive: $prompt"))
                         })
                     })
                 })
             }
 
-            OutputStreamWriter(conn.outputStream).use { writer ->
+            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { writer ->
                 writer.write(payload.toString())
                 writer.flush()
             }
 
-            if (conn.responseCode == 200) {
+            val responseCode = conn.responseCode
+            if (responseCode == 200) {
                 val responseText = conn.inputStream.bufferedReader().use { it.readText() }
                 val json = JSONObject(responseText)
-                val candidate = json.getJSONArray("candidates").getJSONObject(0)
-                val content = candidate.getJSONObject("content").getJSONArray("parts").getJSONObject(0)
-                content.getString("text").trim()
+                val candidates = json.optJSONArray("candidates")
+                if (candidates != null && candidates.length() > 0) {
+                    val candidate = candidates.getJSONObject(0)
+                    val content = candidate.getJSONObject("content")
+                    val parts = content.getJSONArray("parts")
+                    val textBuilder = StringBuilder()
+                    for (i in 0 until parts.length()) {
+                        val part = parts.getJSONObject(i)
+                        if (part.has("text")) {
+                            textBuilder.append(part.getString("text"))
+                        }
+                    }
+                    val resultText = textBuilder.toString().trim()
+                    if (resultText.isNotEmpty()) {
+                        Result.success(resultText)
+                    } else {
+                        Result.failure(Exception("Empty candidate response from Gemini"))
+                    }
+                } else {
+                    Result.failure(Exception("No candidate content generated"))
+                }
             } else {
-                Log.e("JarvisAiRepository", "Gemini HTTP error ${conn.responseCode}")
-                null
+                val errorBody = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: "HTTP $responseCode"
+                Log.e("JarvisAiRepository", "Gemini HTTP $responseCode: $errorBody")
+                val parsedMsg = try {
+                    JSONObject(errorBody).getJSONObject("error").getString("message")
+                } catch (_: Exception) {
+                    "HTTP $responseCode"
+                }
+                Result.failure(Exception(parsedMsg))
             }
         } catch (e: Exception) {
             Log.e("JarvisAiRepository", "Gemini exception: ${e.message}")
-            null
+            Result.failure(e)
         }
     }
 
-    private fun queryOpenRouter(apiKey: String, model: String, prompt: String): String? {
+    private fun queryOpenRouter(apiKey: String, model: String, prompt: String): Result<String> {
         return try {
             val endpoint = "https://openrouter.ai/api/v1/chat/completions"
             val url = URL(endpoint)
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
-                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 setRequestProperty("Authorization", "Bearer $apiKey")
                 setRequestProperty("HTTP-Referer", "https://jarvis.os.launcher")
                 setRequestProperty("X-Title", "Jarvis OS Launcher")
-                connectTimeout = 10000
-                readTimeout = 10000
+                connectTimeout = 15000
+                readTimeout = 15000
                 doOutput = true
             }
 
@@ -157,30 +201,39 @@ class JarvisAiRepository(
                         put("content", prompt)
                     })
                 })
-                put("max_tokens", 250)
+                put("max_tokens", 300)
                 put("temperature", 0.7)
             }
 
-            OutputStreamWriter(conn.outputStream).use { writer ->
+            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { writer ->
                 writer.write(payload.toString())
                 writer.flush()
             }
 
-            if (conn.responseCode == 200) {
+            val responseCode = conn.responseCode
+            if (responseCode == 200) {
                 val responseText = conn.inputStream.bufferedReader().use { it.readText() }
                 val json = JSONObject(responseText)
-                val choices = json.getJSONArray("choices")
-                if (choices.length() > 0) {
+                val choices = json.optJSONArray("choices")
+                if (choices != null && choices.length() > 0) {
                     val message = choices.getJSONObject(0).getJSONObject("message")
-                    message.getString("content").trim()
-                } else null
+                    Result.success(message.getString("content").trim())
+                } else {
+                    Result.failure(Exception("No choices returned from OpenRouter"))
+                }
             } else {
-                Log.e("JarvisAiRepository", "OpenRouter HTTP error ${conn.responseCode}")
-                null
+                val errorBody = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: "HTTP $responseCode"
+                Log.e("JarvisAiRepository", "OpenRouter HTTP $responseCode: $errorBody")
+                val parsedMsg = try {
+                    JSONObject(errorBody).getJSONObject("error").getString("message")
+                } catch (_: Exception) {
+                    "HTTP $responseCode"
+                }
+                Result.failure(Exception(parsedMsg))
             }
         } catch (e: Exception) {
             Log.e("JarvisAiRepository", "OpenRouter exception: ${e.message}")
-            null
+            Result.failure(e)
         }
     }
 

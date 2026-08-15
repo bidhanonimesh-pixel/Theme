@@ -66,10 +66,11 @@ import com.example.core.theme.sciFiHudBackground
 @Composable
 fun AdminLockdownDialog(
     currentSettings: LauncherSettings,
+    geminiModel: String,
     openRouterApiKey: String,
     openRouterModel: String,
     hardwareController: DeviceHardwareController,
-    onSaveSettings: (LauncherSettings, String, String) -> Unit,
+    onSaveSettings: (LauncherSettings, String, String, String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var isPinVerified by remember { mutableStateOf(false) }
@@ -85,9 +86,17 @@ fun AdminLockdownDialog(
     var soundEnabled by remember { mutableStateOf(currentSettings.soundEffectsEnabled) }
     var hapticEnabled by remember { mutableStateOf(currentSettings.hapticFeedbackEnabled) }
     var customApiKey by remember { mutableStateOf(currentSettings.customApiKey) }
+    var currentGeminiModel by remember { mutableStateOf(geminiModel) }
     var openRouterKey by remember { mutableStateOf(openRouterApiKey) }
     var currentOrModel by remember { mutableStateOf(openRouterModel) }
     var newAdminPin by remember { mutableStateOf(currentSettings.adminPin) }
+
+    val geminiPresets = listOf(
+        "gemini-3.5-flash",
+        "gemini-2.5-flash",
+        "gemini-3.1-pro-preview",
+        "gemini-2.5-flash-image"
+    )
 
     val openRouterPresets = listOf(
         "deepseek/deepseek-chat",
@@ -288,7 +297,55 @@ fun AdminLockdownDialog(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Text(
+                                text = "Google Gemini Model Selection",
+                                style = CyberTypography.labelSmall,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            OutlinedTextField(
+                                value = currentGeminiModel,
+                                onValueChange = { currentGeminiModel = it },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = selectedPalette.primaryCyan,
+                                    unfocusedBorderColor = selectedPalette.primaryCyan.copy(alpha = 0.4f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                ),
+                                textStyle = CyberTypography.bodyMedium,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                geminiPresets.forEach { modelPreset ->
+                                    val isSelected = currentGeminiModel == modelPreset
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isSelected) selectedPalette.primaryCyan.copy(alpha = 0.25f) else selectedPalette.surfaceDark)
+                                            .border(1.dp, if (isSelected) selectedPalette.primaryCyan else Color.DarkGray, RoundedCornerShape(6.dp))
+                                            .clickable { currentGeminiModel = modelPreset }
+                                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = modelPreset,
+                                            style = CyberTypography.labelSmall,
+                                            fontSize = 9.sp,
+                                            color = if (isSelected) selectedPalette.primaryCyan else Color.LightGray
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
 
                             Text(
                                 text = "Tier 2: OpenRouter API Key (Fallback)",
@@ -333,7 +390,7 @@ fun AdminLockdownDialog(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -539,7 +596,7 @@ fun AdminLockdownDialog(
                                 customApiKey = customApiKey.trim(),
                                 adminPin = if (newAdminPin.isNotBlank()) newAdminPin else "0000"
                             )
-                            onSaveSettings(updated, openRouterKey.trim(), currentOrModel.trim())
+                            onSaveSettings(updated, currentGeminiModel.trim(), openRouterKey.trim(), currentOrModel.trim())
                             onDismiss()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = selectedPalette.primaryCyan),
