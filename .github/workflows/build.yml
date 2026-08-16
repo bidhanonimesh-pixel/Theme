@@ -1,4 +1,4 @@
-name: Android CI - Build Debug APK
+name: Android CI - Build
 
 on:
   push:
@@ -9,11 +9,10 @@ on:
 
 jobs:
   build:
-    name: Build Debug APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -21,20 +20,18 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+          cache: 'gradle'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Grant Execute Permission to Gradle Wrapper
+      - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Debug APK with Gradle
-        run: ./gradlew clean assembleDebug --no-build-cache
+      - name: Clean and Build Debug APK with Gradle
+        run: ./gradlew clean assembleDebug --no-build-cache --refresh-dependencies
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: jarvis-launcher-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 7
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
