@@ -25,17 +25,11 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Ensure Local Environment File
-        run: |
-          if [ ! -f .env ]; then
-            echo "GEMINI_API_KEY=" > .env
-          fi
-
       - name: Grant Execute Permission to Gradle Wrapper
         run: chmod +x gradlew
 
       - name: Build Debug APK with Gradle
-        run: ./gradlew clean assembleDebug --no-build-cache --refresh-dependencies
+        run: ./gradlew clean assembleDebug --no-build-cache
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
