@@ -35,7 +35,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Debug APK with Gradle
-        run: ./gradlew assembleDebug --stacktrace --no-daemon -Dorg.gradle.jvmargs="-Xmx3072m -Dfile.encoding=UTF-8"
+        run: ./gradlew clean assembleDebug --no-build-cache --refresh-dependencies
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
