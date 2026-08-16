@@ -57,13 +57,8 @@ class JarvisAiRepository(
             return@withContext AiResponseResult.Success(fallback, "Offline Neural Matrix")
         }
 
-        val geminiKey = memoryRepo.getGeminiApiKey().ifBlank {
-            try {
-                com.example.BuildConfig.GEMINI_API_KEY
-            } catch (_: Throwable) {
-                ""
-            }
-        }
+                val geminiKey = memoryRepo.getGeminiApiKey()
+                
         val geminiModel = memoryRepo.getGeminiModel().ifBlank { JarvisMemoryRepository.DEFAULT_GEMINI_MODEL }
         val openRouterKey = memoryRepo.getOpenRouterApiKey()
         val openRouterModel = memoryRepo.getOpenRouterModel().ifBlank { JarvisMemoryRepository.DEFAULT_OPENROUTER_MODEL }
